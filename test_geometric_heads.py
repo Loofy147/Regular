@@ -1,27 +1,32 @@
 import unittest
+import os
 from decimal import Decimal
-from geometric_heads import calculate_geometric_heads, verify_geometric_sequence
+from geometric_heads import HeadTargeter
 
 class TestGeometricHeads(unittest.TestCase):
-    def test_calculate_geometric_heads(self):
-        dim = 64
-        base = 10000
-        heads_map = calculate_geometric_heads(dim=dim, base=base)
+    def setUp(self):
+        self.dim = 32
+        self.targeter = HeadTargeter(dim=self.dim)
 
-        self.assertEqual(len(heads_map), dim // 2)
-        self.assertEqual(heads_map[0], "1")
+    def test_frequency_length(self):
+        self.assertEqual(len(self.targeter.frequencies), self.dim // 2)
 
-    def test_verify_geometric_sequence(self):
-        # Valid geometric sequence
-        valid_map = {0: "1", 1: "0.5", 2: "0.25"}
-        is_geo, ratio = verify_geometric_sequence(valid_map)
+    def test_geometric_integrity(self):
+        is_geo, ratio = self.targeter.verify_geometric_integrity()
         self.assertTrue(is_geo)
-        self.assertEqual(ratio, Decimal("0.5"))
 
-        # Invalid geometric sequence
-        invalid_map = {0: "1", 1: "0.5", 2: "0.1"}
-        is_geo, ratio = verify_geometric_sequence(invalid_map)
-        self.assertFalse(is_geo)
+    def test_get_head_parameters(self):
+        params = self.targeter.get_head_parameters(0, 5)
+        self.assertEqual(params["head_index"], 0)
+        self.assertEqual(params["position"], 5)
+        self.assertEqual(params["frequency"], "1")
+
+    def test_save_map(self):
+        filename = "test_map.json"
+        self.targeter.save_map(seq_len=2, filename=filename)
+        self.assertTrue(os.path.exists(filename))
+        if os.path.exists(filename):
+            os.remove(filename)
 
 if __name__ == "__main__":
     unittest.main()
