@@ -1,7 +1,7 @@
 import time
 import json
 from decimal import Decimal
-from geometric_heads import HeadTargeter, PressureWeightSystem, Modulator, apply_rope
+from genieune_heads.core import HeadTargeter, PressureWeightSystem, Modulator, apply_rope
 
 def run_wide_open_test(dim=4096, n_heads=32, seq_len=1000):
     print(f"--- Wide Open Stress Test: Dim={dim}, Heads={n_heads}, SeqLen={seq_len} ---")

@@ -37,6 +37,10 @@ def decimal_sin_cos(x, terms=50):
     return sin_x, cos_x
 
 class HeadTargeter:
+    """
+    Structured system for targeting attention heads with precision using geometric frequencies.
+    Tailored for "Genuine" architectures like Gemma.
+    """
     def __init__(self, dim=256, base=10000):
         self.dim = dim
         self.base = Decimal(base)
@@ -45,6 +49,7 @@ class HeadTargeter:
 
     @property
     def frequencies(self):
+        """Calculates and caches the geometric sequence of frequencies."""
         if self._frequencies is None:
             dim_dec = Decimal(self.dim)
             self._frequencies = []
@@ -55,9 +60,13 @@ class HeadTargeter:
         return self._frequencies
 
     def get_head_parameters(self, head_idx, pos):
+        """Target a specific head index at a specific position with precision (cached)."""
         cache_key = (head_idx, pos)
         if cache_key in self._param_cache:
             return self._param_cache[cache_key]
+
+        if head_idx >= self.dim // 2:
+            raise ValueError(f"Head index {head_idx} out of range for dimension {self.dim}")
 
         freq = self.frequencies[head_idx]
         phase = Decimal(pos) * freq
@@ -78,13 +87,19 @@ class HeadTargeter:
         return params
 
     def verify_geometric_integrity(self):
+        """Verifies that frequencies follow a precise geometric sequence."""
         freqs = self.frequencies
+        if len(freqs) < 3:
+            return True, "N/A"
         ratios = [freqs[i+1] / freqs[i] for i in range(len(freqs)-1)]
         first_ratio = ratios[0]
         is_geometric = all(abs(r - first_ratio) < Decimal('1e-90') for r in ratios)
         return is_geometric, first_ratio
 
 class PressureWeightSystem:
+    """
+    Programmable pressure weight system using a geometric sequence for attention biases.
+    """
     def __init__(self, n_heads=8, base_pressure=Decimal('8.0')):
         self.n_heads = n_heads
         self.base_pressure = base_pressure
@@ -98,27 +113,35 @@ class PressureWeightSystem:
         return self._weights
 
     def get_weight(self, head_idx):
+        """Gets the pressure weight for a specific head."""
+        if head_idx < 0 or head_idx >= self.n_heads:
+            raise ValueError(f"Head index {head_idx} out of range for {self.n_heads} heads")
         return self.weights[head_idx]
 
     def verify_geometric_ratio(self):
         w = self.weights
+        if len(w) < 3:
+            return True, "N/A"
         ratios = [w[i+1] / w[i] for i in range(len(w)-1)]
         first_ratio = ratios[0]
         is_geometric = all(abs(r - first_ratio) < Decimal('1e-90') for r in ratios)
         return is_geometric, first_ratio
 
 class Modulator:
+    """Integrates HeadTargeter (frequencies) and PressureWeightSystem (weights)."""
     def __init__(self, targeter, pressure_system):
         self.targeter = targeter
         self.pressure_system = pressure_system
 
     def target_head(self, head_idx, pos):
+        """Full targeting: frequency mapping + pressure weighting."""
         params = self.targeter.get_head_parameters(head_idx, pos)
         pressure_idx = head_idx % self.pressure_system.n_heads
         params["pressure_weight"] = str(self.pressure_system.get_weight(pressure_idx))
         return params
 
 def apply_rope(vec, pos, targeter):
+    """Applies RoPE to a vector using a HeadTargeter."""
     dim = len(vec)
     rotated_vec = [Decimal(0)] * dim
     for i in range(dim // 2):
@@ -137,10 +160,18 @@ if __name__ == "__main__":
     modulator = Modulator(targeter, pressure_system)
 
     if len(sys.argv) > 1 and sys.argv[1] == "target":
-        params = modulator.target_head(int(sys.argv[2]), int(sys.argv[3]))
+        idx = int(sys.argv[2]) if len(sys.argv) > 2 else 0
+        pos = int(sys.argv[3]) if len(sys.argv) > 3 else 1
+        params = modulator.target_head(idx, pos)
         print(json.dumps({k:v for k,v in params.items() if not k.startswith("decimal_")}, indent=4))
+    elif len(sys.argv) > 1 and sys.argv[1] == "pressure":
+        print(f"--- Pressure Weight Sequence ---")
+        for i, w in enumerate(pressure_system.weights):
+            print(f"Head {i:2d}: {w}")
     else:
         print(f"--- Genieune Modulator Initialized (Ultra High Precision) ---")
+        is_geo, _ = targeter.verify_geometric_integrity()
+        print(f"Frequency Geometric Integrity: {is_geo}")
         test_vec = [Decimal('1.0')] * dim
         rotated = apply_rope(test_vec, 5, targeter)
         diff = abs(sum(x*x for x in test_vec) - sum(x*x for x in rotated))

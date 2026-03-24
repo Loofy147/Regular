@@ -1,6 +1,6 @@
 import unittest
 from decimal import Decimal
-from geometric_heads import HeadTargeter, PressureWeightSystem, Modulator
+from genieune_heads.core import HeadTargeter, PressureWeightSystem, Modulator
 
 class TestGeometricHeads(unittest.TestCase):
     def test_pressure_weights(self):
