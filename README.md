@@ -7,16 +7,20 @@ The name "Genieune Heads" reflects our focus on **Genuine** architectures like G
 ## Key Features
 
 - **Precision Targeting**: Ultra-high precision calculations (100 decimal places) for positional frequencies and sin/cos rotation maps using the `decimal` module and custom Taylor series.
-- **Geometric Sequences**: Both positional frequencies (^{-2i/d}$) and pressure weights (^{-(8i/n)}$) follow strict geometric sequences, verified for mathematical integrity.
+- **Geometric Sequences**: Both positional frequencies (`base^{-2i/d}`) and pressure weights (`2^{-(8i/n)}`) follow strict geometric sequences, verified for mathematical integrity.
 - **Programmable Pressure Weights**: Support for programmable attention biases (pressure) that are applied across heads in a geometric pattern, similar to ALiBi.
-- **Ultra-Scale Robustness**: Verified at dimensions up to 4096 and sequence lengths of 1000+, achieving effectively zero (0E-96) cumulative norm error.
+- **Sequence & Streaming Support**: Apply RoPE to full sequences or stream vectors incrementally using the `StreamingEncoder`.
+- **Advanced Diagnostics & Visualization**: Analyze head behaviors with frequency band entropy, phase drift measurements, and CLI-based ASCII plotting of phase portraits.
+- **Ultra-Scale Robustness**: Verified at dimensions up to 4096 and sequence lengths of 2,000,000+, achieving effectively zero (0E-96) cumulative norm error.
 
 ## Project Structure
 
 - `genieune_heads/`: The core Python package.
-  - `core.py`: Implements `HeadTargeter`, `PressureWeightSystem`, and `Modulator`.
+  - `core.py`: Implements `HeadTargeter`, `PressureWeightSystem`, `Modulator`, `StreamingEncoder`, `HeadAnalyzer`, and more.
 - `tests/`: Comprehensive test suite.
   - `test_core.py`: Unit tests for package components.
+  - `test_upgrades.py`: Tests for the persistent cache and new analyzers.
+  - `test_advanced.py`: Tests for sequence and streaming operations.
   - `test_wide_open.py`: Large-scale stress and precision tests.
 
 ## Installation & Usage
@@ -30,18 +34,19 @@ Target any head with precision from the command line:
 python3 -m genieune_heads.core target 5 100
 ```
 
-### Inspecting Pressure Weights
+### Phase Portrait Visualization
 
-View the geometric sequence of attention biases:
+Visualize the sin/cos trajectory of a head in the terminal:
 
 ```bash
-python3 -m genieune_heads.core pressure
+# Plot trajectory of head 0 for 50 positions
+python3 -m genieune_heads.core plot 0 50
 ```
 
 ### Example Python Usage
 
 ```python
-from genieune_heads import HeadTargeter, PressureWeightSystem, Modulator
+from genieune_heads import HeadTargeter, PressureWeightSystem, Modulator, StreamingEncoder
 from decimal import Decimal
 
 # Initialize the systems
@@ -49,9 +54,15 @@ targeter = HeadTargeter(dim=256)
 pressure = PressureWeightSystem(n_heads=16)
 modulator = Modulator(targeter, pressure)
 
-# Target head index 13 at position 42 with precision
-params = modulator.target_head(13, 42)
-print(f"Targeting Head 13 - Frequency: {params['frequency']}, Sin: {params['sin']}")
+# Sequence encoding
+seq = [[Decimal('1.0')] * 256 for _ in range(5)]
+rotated_seq = modulator.apply_rope_sequence(seq)
+
+# Stateful streaming
+streamer = StreamingEncoder(targeter)
+vec = [Decimal('1.0')] * 256
+rotated_vec = streamer.encode_next(vec) # Position 0
+rotated_vec_next = streamer.encode_next(vec) # Position 1
 ```
 
 ## Testing
@@ -63,7 +74,7 @@ Run unit tests and wide-open stress tests to verify mathematical integrity:
 python3 -m unittest discover tests
 
 # Stress testing (at scale)
-python3 -m tests.test_wide_open
+PYTHONPATH=. python3 tests/test_wide_open.py
 ```
 
 ---

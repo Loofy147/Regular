@@ -7,5 +7,6 @@ from .core import (
     HeadAnalyzer,
     SequenceEncoder,
     AttentionBiasMatrix,
-    GenieuneHeadsProfiler
+    GenieuneHeadsProfiler,
+    StreamingEncoder
 )

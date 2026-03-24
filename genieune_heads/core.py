@@ -267,6 +267,26 @@ class Modulator:
         """Applies RoPE to a batch of vectors at a specific position."""
         return [apply_rope(vec, pos, self.targeter) for vec in batch_vecs]
 
+    def apply_rope_sequence(self, seq_vecs):
+        """Applies RoPE to a sequence of vectors, each at its respective position."""
+        return [apply_rope(vec, pos, self.targeter) for pos, vec in enumerate(seq_vecs)]
+
+    def modulate_attention(self, scores, head_idx):
+        """
+        Applies pressure-weighted bias to attention scores for a specific head.
+        scores is a 2D matrix [seq_len, seq_len].
+        """
+        seq_len = len(scores)
+        bias = self.bias_generator.get_bias_for_head(head_idx, seq_len)
+
+        modulated = []
+        for i in range(seq_len):
+            row = []
+            for j in range(seq_len):
+                row.append(Decimal(scores[i][j]) + bias[i][j])
+            modulated.append(row)
+        return modulated
+
 def apply_rope(vec, pos, targeter):
     """Applies RoPE to a vector using a HeadTargeter."""
     dim = len(vec)
@@ -329,6 +349,47 @@ class HeadAnalyzer:
                 entropy -= p * math.log2(p)
         return entropy
 
+    def calculate_phase_drift(self, head_idx, seq_len=1000):
+        """Measures how much the phase drifts from expected over time."""
+        freq = self.targeter.frequencies[head_idx]
+        max_drift = Decimal(0)
+
+        for pos in range(seq_len):
+            expected_phase = Decimal(pos) * freq
+            params = self.targeter.get_head_parameters(head_idx, pos)
+            actual_phase = Decimal(params["phase"])
+            drift = abs(expected_phase - actual_phase)
+            max_drift = max(max_drift, drift)
+
+        return max_drift
+
+    def identify_harmonic_heads(self, tolerance=Decimal('1e-5')):
+        """Identifies heads whose frequencies are near-harmonics (integer ratios)."""
+        freqs = self.targeter.frequencies
+        harmonics = []
+        for i in range(len(freqs)):
+            for j in range(i + 1, len(freqs)):
+                ratio = freqs[i] / freqs[j]
+                if abs(ratio - round(ratio)) < tolerance:
+                    harmonics.append((i, j, float(ratio)))
+        return harmonics
+
+class StreamingEncoder:
+    """Stateful positional encoder for incremental inputs."""
+    def __init__(self, targeter):
+        self.targeter = targeter
+        self.current_pos = 0
+
+    def encode_next(self, vec):
+        """Applies RoPE to the next vector in the sequence and increments position."""
+        rotated = apply_rope(vec, self.current_pos, self.targeter)
+        self.current_pos += 1
+        return rotated
+
+    def reset(self, start_pos=0):
+        """Resets the encoder to a specific position."""
+        self.current_pos = start_pos
+
 class GenieuneHeadsProfiler:
     """Built-in profiling for measuring core component performance."""
     def __init__(self):
@@ -359,6 +420,37 @@ class GenieuneHeadsProfiler:
             avg = s["total_time"] / s["count"] if s["count"] > 0 else 0
             report.append(f"{name:30s} | Avg: {avg:.6f}s | Max: {s['max_time']:.6f}s | Min: {s['min_time']:.6f}s | Count: {s['count']}")
         return "\n".join(report)
+
+def ascii_plot(data, width=60, height=20, label_x="X", label_y="Y"):
+    """Simple ASCII plotter for 2D trajectories."""
+    if not data:
+        return "No data to plot."
+
+    xs, ys = zip(*data)
+    min_x, max_x = min(xs), max(xs)
+    min_y, max_y = min(ys), max(ys)
+
+    range_x = float(max_x - min_x) or 1.0
+    range_y = float(max_y - min_y) or 1.0
+
+    # Grid initialization
+    grid = [[" " for _ in range(width)] for _ in range(height)]
+
+    for x, y in data:
+        # Scale to grid coords
+        px = int((float(x) - float(min_x)) / range_x * (width - 1))
+        py = int((float(y) - float(min_y)) / range_y * (height - 1))
+        # Invert py because grid row 0 is at the top
+        py = height - 1 - py
+        grid[py][px] = "*"
+
+    lines = ["+" + "-" * width + "+"]
+    for row in grid:
+        lines.append("|" + "".join(row) + "|")
+    lines.append("+" + "-" * width + "+")
+    lines.append(f"{label_x}: [{float(min_x):.2f}, {float(max_x):.2f}]  {label_y}: [{float(min_y):.2f}, {float(max_y):.2f}]")
+
+    return "\n".join(lines)
 
 if __name__ == "__main__":
     import sys
@@ -397,6 +489,8 @@ if __name__ == "__main__":
             print(f"Frequency Bands: {[len(b) for b in bands['bands']]}")
             entropy = analyzer.calculate_band_entropy()
             print(f"Band Entropy: {entropy:.4f}")
+            harmonics = analyzer.identify_harmonic_heads()
+            print(f"Harmonic Head Pairs: {len(harmonics)}")
         elif cmd == "export-map":
             target_file = sys.argv[2] if len(sys.argv) > 2 else "heads_map_exported.json"
             # Force compute a few positions if cache is empty or just export current
@@ -405,6 +499,12 @@ if __name__ == "__main__":
                 print(f"Exported heads map to {target_file}")
             else:
                 print("No external cache to export.")
+        elif cmd == "plot":
+            idx = int(sys.argv[2]) if len(sys.argv) > 2 else 0
+            max_pos = int(sys.argv[3]) if len(sys.argv) > 3 else 50
+            trajectory = analyzer.generate_phase_portrait(idx, max_pos)
+            print(f"--- Phase Portrait (Head {idx}, Pos 0-{max_pos}) ---")
+            print(ascii_plot(trajectory, label_x="Sin", label_y="Cos"))
     else:
         print(f"--- Genieune Modulator Initialized (Ultra High Precision) ---")
         is_geo, _ = targeter.verify_geometric_integrity()
