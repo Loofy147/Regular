@@ -23,17 +23,23 @@ This document describes the observed aspects, abilities, and behaviors of the **
 - **Scaling Behavior**: Default configuration provides a geometric ratio of `0.5` between consecutive heads.
 - **Attenuation Pattern**: Allows for exponentially decreasing or increasing influence across the attention heads.
 
-## 5. Caching and Lazy Initialization (Behavior)
+## 5. Geometric Orbit Construction (Behavior)
+- **Behavior**: Direct computation of "genuine heads" from a 12-parameter four-coordinate framework (r, v, j0, delta for 3 colors).
+- **Core Algorithm**: Uses a spike function `b_c(j) = v + delta * [j == j0]`. The indicator `[j == j0]` is calculated using Fermat's Little Theorem: `1 - (j - j0)^(m-1) mod m`.
+- **Deterministic Targeting**: The orbit-starting positions of three Hamiltonian cycles are computed directly as `(r * sigma) % m`, where `sigma` is the sum of the spike function orbit.
+- **Search-Free**: This construction is fully calculated with no search required, ensuring absolute precision in targeting the entry points of geometric orbits.
+
+## 6. Caching and Lazy Initialization (Behavior)
 - **Behavior**: The system employs lazy property initialization and caching for head parameters to optimize repeated lookups.
 - **Memory/Speed Trade-off**: Initial access computes high-precision values once, then subsequent lookups are `O(1)`.
 - **Persistence**: Integrated `HeadsMapCache` allows for JSON-based persistence of high-precision precomputations.
 
-## 6. Architectural Flexibility (Ability)
+## 7. Architectural Flexibility (Ability)
 - **Sequence Processing**: The `Modulator` provides `apply_rope_sequence` for full sequence processing and `modulate_attention` for applying pressure-weighted biases to attention scores.
 - **Stateful Streaming**: The `StreamingEncoder` enables incremental positional encoding for real-time applications.
 - **Diagnostic Suite**: `HeadAnalyzer` offers advanced tools for frequency band analysis, phase drift measurement, and harmonic head identification.
 
-## 7. Long-Term Stability (Ability)
+## 8. Long-Term Stability (Ability)
 - **Ability**: The system maintains absolute precision over long sequence lengths (e.g., `2,000,000` iterations).
 - **Verification Run**: A 2-million iteration stress test was performed, targeting a 2D head for optimal performance monitoring.
 - **Precision Score**: Achieved a score of **989.44** (based on `-log10(avg_error) * 10`).
