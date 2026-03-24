@@ -26,10 +26,7 @@ class HeadTargeter:
         return freqs
 
     def get_head_parameters(self, head_idx, pos):
-        """
-        Target a specific head index at a specific position with precision.
-        Returns frequency, phase, sin, and cos values.
-        """
+        """Target a specific head index at a specific position with precision."""
         if head_idx >= self.dim // 2:
             raise ValueError(f"Head index {head_idx} out of range for dimension {self.dim}")
 
@@ -47,85 +44,105 @@ class HeadTargeter:
             "cos": str(c)
         }
 
-    def generate_structured_map(self, seq_len):
-        """Generates a complete structured map for a sequence of positions."""
-        structured_map = {}
-        for pos in range(seq_len):
-            pos_map = {}
-            for i in range(self.dim // 2):
-                pos_map[i] = self.get_head_parameters(i, pos)
-            structured_map[pos] = pos_map
-        return structured_map
+class PressureWeightSystem:
+    """
+    Programmable pressure weight system using a geometric sequence for attention biases.
+    Formula: m_i = 2**(-(8 * i) / n_heads)
+    """
+    def __init__(self, n_heads=8, base_pressure=Decimal('8.0')):
+        self.n_heads = n_heads
+        self.base_pressure = base_pressure
+        self.weights = self._calculate_weights()
 
-    def find_target(self, target_value, precision=Decimal('0.01'), max_pos=100):
-        """
-        Finds the first head/position pair that targets a specific sin value with precision.
-        """
-        target = Decimal(target_value)
-        for pos in range(max_pos):
-            for i in range(self.dim // 2):
-                params = self.get_head_parameters(i, pos)
-                if abs(Decimal(params["sin"]) - target) < precision:
-                    return params
-        return None
+    def _calculate_weights(self):
+        """Calculates the geometric sequence of pressure weights."""
+        n_heads_dec = Decimal(self.n_heads)
+        weights = []
+        for i in range(self.n_heads):
+            # Similar to ALiBi's m values: m = 2^(-8i/n)
+            exponent = -(self.base_pressure * Decimal(i+1)) / n_heads_dec
+            weight = Decimal(2) ** exponent
+            weights.append(weight)
+        return weights
 
-    def visualize_frequencies(self, width=60):
-        """Provides an ASCII visualization of the geometric sequence."""
-        print("\n--- Geometric Frequency Sequence Visualization ---")
-        max_f = float(self.frequencies[0])
-        for i, f in enumerate(self.frequencies[:16]): # Show first 16
-            bar_len = int((float(f) / max_f) * width)
-            print(f"Head {i:2d}: [{'#' * bar_len}{' ' * (width - bar_len)}] {float(f):.6f}")
-        print("...")
+    def get_weight(self, head_idx):
+        """Gets the pressure weight for a specific head."""
+        if head_idx >= self.n_heads:
+            raise ValueError(f"Head index {head_idx} out of range for {self.n_heads} heads")
+        return self.weights[head_idx]
+
+    def verify_geometric_ratio(self):
+        """Verifies that pressure weights maintain a precise geometric sequence."""
+        if len(self.weights) < 3:
+            return True, "N/A"
+        ratios = []
+        for i in range(len(self.weights) - 1):
+            ratios.append(self.weights[i+1] / self.weights[i])
+        first_ratio = ratios[0]
+        is_geometric = all(abs(r - first_ratio) < Decimal('1e-45') for r in ratios)
+        return is_geometric, first_ratio
+
+class Modulator:
+    """Integrates HeadTargeter (frequencies) and PressureWeightSystem (weights)."""
+    def __init__(self, targeter, pressure_system):
+        self.targeter = targeter
+        self.pressure_system = pressure_system
+
+    def target_head(self, head_idx, pos):
+        """Full targeting: frequency mapping + pressure weighting."""
+        params = self.targeter.get_head_parameters(head_idx, pos)
+        # Assuming pressure is distributed across heads
+        pressure_idx = head_idx % self.pressure_system.n_heads
+        params["pressure_weight"] = str(self.pressure_system.get_weight(pressure_idx))
+        return params
 
 def apply_rope(vec, pos, targeter):
     """Applies RoPE to a vector using a HeadTargeter."""
     dim = len(vec)
     rotated_vec = [Decimal(0)] * dim
-
     for i in range(dim // 2):
         x1, x2 = vec[2*i], vec[2*i + 1]
         params = targeter.get_head_parameters(i, pos)
         s, c = Decimal(params["sin"]), Decimal(params["cos"])
-
         rotated_vec[2*i] = x1 * c - x2 * s
         rotated_vec[2*i + 1] = x1 * s + x2 * c
-
     return rotated_vec
 
 if __name__ == "__main__":
     import sys
 
-    # Gemma-2B style head dimension
+    # Gemma-2B style head dimension and heads
     dim = 256
+    n_heads = 16
     targeter = HeadTargeter(dim=dim)
+    pressure_system = PressureWeightSystem(n_heads=n_heads)
+    modulator = Modulator(targeter, pressure_system)
 
     if len(sys.argv) > 1 and sys.argv[1] == "target":
-        if len(sys.argv) > 2 and sys.argv[2] == "value":
-            # Search for a specific value: python geometric_heads.py target value 0.5
-            val = sys.argv[3] if len(sys.argv) > 3 else "0.5"
-            print(f"--- Precision Targeting for Value: {val} ---")
-            found = targeter.find_target(val)
-            if found:
-                print(json.dumps(found, indent=4))
-            else:
-                print("No match found within search bounds.")
-        else:
-            # Target a specific head: python geometric_heads.py target <idx> <pos>
-            idx = int(sys.argv[2]) if len(sys.argv) > 2 else 0
-            pos = int(sys.argv[3]) if len(sys.argv) > 3 else 1
-            params = targeter.get_head_parameters(idx, pos)
-            print(f"--- Precision Targeting: Head {idx} at Position {pos} ---")
-            print(json.dumps(params, indent=4))
+        # Target a specific head: python geometric_heads.py target <idx> <pos>
+        idx = int(sys.argv[2]) if len(sys.argv) > 2 else 0
+        pos = int(sys.argv[3]) if len(sys.argv) > 3 else 1
+        params = modulator.target_head(idx, pos)
+        print(f"--- Full Precision Targeting: Head {idx} at Position {pos} ---")
+        print(json.dumps(params, indent=4))
+    elif len(sys.argv) > 1 and sys.argv[1] == "pressure":
+        # python geometric_heads.py pressure
+        print(f"--- Pressure Weight Geometric Sequence: {n_heads} Heads ---")
+        is_geo, ratio = pressure_system.verify_geometric_ratio()
+        print(f"Geometric Integrity: {'PASSED' if is_geo else 'FAILED'}")
+        print(f"Constant Ratio: {ratio}\n")
+        for i, w in enumerate(pressure_system.weights):
+            print(f"Head {i:2d}: {w}")
     else:
-        print(f"--- Genieune Head System: {dim} Dimensions ---")
-        targeter.visualize_frequencies()
+        print(f"--- Genieune Modulator Initialized ---")
+        is_geo, ratio = pressure_system.verify_geometric_integrity() if hasattr(pressure_system, 'verify_geometric_integrity') else pressure_system.verify_geometric_ratio()
+        print(f"Pressure Weights Geometric Sequence: {is_geo}")
 
         test_vec = [Decimal('1.0')] * dim
         rotated = apply_rope(test_vec, 5, targeter)
         diff = abs(sum(x*x for x in test_vec) - sum(x*x for x in rotated))
-        print(f"\nPrecision Integrity Check (Norm Diff): {diff}")
+        print(f"Rotation Precision Check: {diff}")
 
-        if diff < Decimal('1e-15'):
-            print("\nThe genieune heads have been brought by structured maps in a geometric sequence.")
-            print("Targeting system ready.")
+        if is_geo and diff < Decimal('1e-15'):
+            print("\nThe genieune heads have been brought by structured maps.")
+            print("Programmable pressure weights integrated.")
