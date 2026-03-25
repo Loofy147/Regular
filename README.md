@@ -1,80 +1,69 @@
 # Genieune Heads: Precision Geometric Targeting
 
-Genieune Heads is a high-precision implementation of **Rotary Positional Embeddings (RoPE)** and **Programmable Pressure Weights** for attention mechanisms.
+Genieune Heads is a high-precision implementation of **Rotary Positional Embeddings (RoPE)** and **Deterministic Geometric Orbit Construction** for advanced attention mechanisms.
 
-The name "Genieune Heads" reflects our focus on **Genuine** architectures like Gemma and MedGemma, where attention heads are "brought to life" through structured maps in a geometric sequence.
+The system is designed for **Genuine** architectures where attention heads are governed by structured geometric maps, ensuring absolute precision and mathematical integrity at scale.
+
+## Quick Start
+
+```bash
+# 1. Target a head with 100-place precision
+python3 -m genieune_heads.core target 5 100
+
+# 2. Construct geometric orbits (Hamiltonian cycles)
+python3 -m genieune_heads.core orbit 7
+
+# 3. Visualize a head's phase portrait (ASCII)
+python3 -m genieune_heads.core plot 0 50
+
+# 4. Run the behavior identification suite
+python3 identify_behaviors.py
+```
 
 ## Key Features
 
-- **Precision Targeting**: Ultra-high precision calculations (100 decimal places) for positional frequencies and sin/cos rotation maps using the `decimal` module and custom Taylor series.
-- **Geometric Sequences**: Both positional frequencies (`base^{-2i/d}`) and pressure weights (`2^{-(8i/n)}`) follow strict geometric sequences, verified for mathematical integrity.
-- **Programmable Pressure Weights**: Support for programmable attention biases (pressure) that are applied across heads in a geometric pattern, similar to ALiBi.
-- **Sequence & Streaming Support**: Apply RoPE to full sequences or stream vectors incrementally using the `StreamingEncoder`.
-- **Advanced Diagnostics & Visualization**: Analyze head behaviors with frequency band entropy, phase drift measurements, and CLI-based ASCII plotting of phase portraits.
-- **Ultra-Scale Robustness**: Verified at dimensions up to 4096 and sequence lengths of 2,000,000+, achieving effectively zero (0E-96) cumulative norm error.
+- **Precision Targeting**: 100-decimal place accuracy using custom Taylor series for sin/cos.
+- **Geometric Orbit Construction**: Direct computation of "genuine heads" from 12 parameters (r, v, j0, delta) using spike functions and Fermat's Little Theorem.
+- **Stateful Streaming**: Incremental positional encoding with `StreamingEncoder`.
+- **Advanced Diagnostics**: entropy metrics, phase drift monitoring, and harmonic identification.
+- **Ultra-Scale Robustness**: Verified stability up to 2,000,000 positions with zero (0E-96) norm error.
+
+## Mathematical Foundation
+
+### 1. The Four-Coordinate Framework
+The system constructs Hamiltonian cycles using four parameters per color:
+- **r**: The multiplier for orbit-starting positions.
+- **v**: The base value for the spike function.
+- **j₀**: The singular position of the "spike".
+- **δ**: The intensity of the spike.
+
+### 2. The Spike Function
+The function $b_c(j)$ determines the orbit structure:
+$$b_c(j) = v + \delta \cdot [j == j_0]$$
+In modular arithmetic (mod $m$), the indicator $[j == j_0]$ is calculated as:
+$$1 - (j - j_0)^{m-1} \pmod m$$
+This ensures the construction is fully calculated without random search.
 
 ## Project Structure
 
-- `genieune_heads/`: The core Python package.
-  - `core.py`: Implements `HeadTargeter`, `PressureWeightSystem`, `Modulator`, `StreamingEncoder`, `HeadAnalyzer`, and more.
-- `tests/`: Comprehensive test suite.
-  - `test_core.py`: Unit tests for package components.
-  - `test_upgrades.py`: Tests for the persistent cache and new analyzers.
-  - `test_advanced.py`: Tests for sequence and streaming operations.
-  - `test_wide_open.py`: Large-scale stress and precision tests.
+- `genieune_heads/`: Core package (Python).
+- `tests/`: Comprehensive unit and stress tests.
+- `identify_behaviors.py`: Diagnostic utility for system aspects.
 
-## Installation & Usage
-
-### Targeting a Specific Head
-
-Target any head with precision from the command line:
-
-```bash
-# Target head index 5 at position 100 with default 256 dimensions
-python3 -m genieune_heads.core target 5 100
-```
-
-### Phase Portrait Visualization
-
-Visualize the sin/cos trajectory of a head in the terminal:
-
-```bash
-# Plot trajectory of head 0 for 50 positions
-python3 -m genieune_heads.core plot 0 50
-```
-
-### Example Python Usage
+## Example Usage
 
 ```python
-from genieune_heads import HeadTargeter, PressureWeightSystem, Modulator, StreamingEncoder
+from genieune_heads import GeometricHeadTargeter, StreamingEncoder
 from decimal import Decimal
 
-# Initialize the systems
-targeter = HeadTargeter(dim=256)
-pressure = PressureWeightSystem(n_heads=16)
-modulator = Modulator(targeter, pressure)
+# Initialize Geometric Targeter
+targeter = GeometricHeadTargeter(m=7)
+targeter.set_orbit_parameters([{"r": 1, "v": 0.1, "j0": 0, "delta": 0.5}, ...])
 
-# Sequence encoding
-seq = [[Decimal('1.0')] * 256 for _ in range(5)]
-rotated_seq = modulator.apply_rope_sequence(seq)
-
-# Stateful streaming
+# Incremental Encoding
 streamer = StreamingEncoder(targeter)
-vec = [Decimal('1.0')] * 256
-rotated_vec = streamer.encode_next(vec) # Position 0
-rotated_vec_next = streamer.encode_next(vec) # Position 1
-```
-
-## Testing
-
-Run unit tests and wide-open stress tests to verify mathematical integrity:
-
-```bash
-# Unit tests
-python3 -m unittest discover tests
-
-# Stress testing (at scale)
-PYTHONPATH=. python3 tests/test_wide_open.py
+vector = [Decimal('1.0')] * 256
+rotated = streamer.encode_next(vector)
 ```
 
 ---

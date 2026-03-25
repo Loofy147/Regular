@@ -11,7 +11,6 @@ def decimal_sin_cos(x, terms=50):
     Calculates sin(x) and cos(x) using Taylor series for high precision.
     x is a Decimal.
     """
-    # Normalize x to [-pi, pi] for better convergence
     pi = Decimal('3.1415926535897932384626433832795028841971693993751058209749445923078164062862089986280348253421170679')
     two_pi = 2 * pi
     x = x % two_pi
@@ -61,7 +60,6 @@ class HeadsMapCache:
         head_idx_str = str(head_idx)
         if pos_str in self.data and head_idx_str in self.data[pos_str]:
             params = self.data[pos_str][head_idx_str].copy()
-            # Convert sin/cos back to Decimal for use in apply_rope
             params["decimal_sin"] = Decimal(params["sin"])
             params["decimal_cos"] = Decimal(params["cos"])
             return params
@@ -72,7 +70,6 @@ class HeadsMapCache:
         head_idx_str = str(head_idx)
         if pos_str not in self.data:
             self.data[pos_str] = {}
-        # Store only what's needed for JSON, avoid Decimal objects
         json_params = {k: v for k, v in params.items() if not k.startswith("decimal_")}
         self.data[pos_str][head_idx_str] = json_params
 
@@ -221,7 +218,6 @@ class AttentionBiasMatrix:
             for i in range(seq_len):
                 row = []
                 for j in range(seq_len):
-                    # ALiBi style distance penalty: -slope * |i - j|
                     dist = Decimal(abs(i - j))
                     row.append(-(slope * dist))
                 head_matrix.append(row)
@@ -272,13 +268,9 @@ class Modulator:
         return [apply_rope(vec, pos, self.targeter) for pos, vec in enumerate(seq_vecs)]
 
     def modulate_attention(self, scores, head_idx):
-        """
-        Applies pressure-weighted bias to attention scores for a specific head.
-        scores is a 2D matrix [seq_len, seq_len].
-        """
+        """Applies pressure-weighted bias to attention scores."""
         seq_len = len(scores)
         bias = self.bias_generator.get_bias_for_head(head_idx, seq_len)
-
         modulated = []
         for i in range(seq_len):
             row = []
@@ -305,24 +297,16 @@ class HeadAnalyzer:
         self.targeter = targeter
 
     def analyze_frequency_bands(self, n_bands=4):
-        """Categorizes heads into frequency bands."""
         freqs = [float(f) for f in self.targeter.frequencies]
         min_f, max_f = min(freqs), max(freqs)
         band_size = (max_f - min_f) / n_bands if n_bands > 0 else 0
-
         bands = [[] for _ in range(n_bands)]
         for i, f in enumerate(freqs):
             band_idx = min(int((f - min_f) / band_size) if band_size > 0 else 0, n_bands - 1)
             bands[band_idx].append(i)
-
-        return {
-            "min_freq": min_f,
-            "max_freq": max_f,
-            "bands": bands
-        }
+        return {"min_freq": min_f, "max_freq": max_f, "bands": bands}
 
     def generate_phase_portrait(self, head_idx, max_pos=100):
-        """Generates (sin, cos) trajectory for a head."""
         trajectory = []
         for pos in range(max_pos):
             params = self.targeter.get_head_parameters(head_idx, pos)
@@ -330,17 +314,13 @@ class HeadAnalyzer:
         return trajectory
 
     def calculate_band_entropy(self, n_bands=10):
-        """Calculates entropy of frequency distribution across bands."""
         freqs = [float(f) for f in self.targeter.frequencies]
         min_f, max_f = min(freqs), max(freqs)
-        if max_f == min_f:
-            return 0.0
-
+        if max_f == min_f: return 0.0
         hist = [0] * n_bands
         for f in freqs:
             idx = min(int((f - min_f) / (max_f - min_f) * n_bands), n_bands - 1)
             hist[idx] += 1
-
         total = len(freqs)
         entropy = 0.0
         for count in hist:
@@ -350,21 +330,16 @@ class HeadAnalyzer:
         return entropy
 
     def calculate_phase_drift(self, head_idx, seq_len=1000):
-        """Measures how much the phase drifts from expected over time."""
         freq = self.targeter.frequencies[head_idx]
         max_drift = Decimal(0)
-
         for pos in range(seq_len):
             expected_phase = Decimal(pos) * freq
             params = self.targeter.get_head_parameters(head_idx, pos)
             actual_phase = Decimal(params["phase"])
-            drift = abs(expected_phase - actual_phase)
-            max_drift = max(max_drift, drift)
-
+            max_drift = max(max_drift, abs(expected_phase - actual_phase))
         return max_drift
 
     def identify_harmonic_heads(self, tolerance=Decimal('1e-5')):
-        """Identifies heads whose frequencies are near-harmonics (integer ratios)."""
         freqs = self.targeter.frequencies
         harmonics = []
         for i in range(len(freqs)):
@@ -381,13 +356,11 @@ class StreamingEncoder:
         self.current_pos = 0
 
     def encode_next(self, vec):
-        """Applies RoPE to the next vector in the sequence and increments position."""
         rotated = apply_rope(vec, self.current_pos, self.targeter)
         self.current_pos += 1
         return rotated
 
     def reset(self, start_pos=0):
-        """Resets the encoder to a specific position."""
         self.current_pos = start_pos
 
 class GenieuneHeadsProfiler:
@@ -396,25 +369,20 @@ class GenieuneHeadsProfiler:
         self.stats = {}
 
     def profile_call(self, func, *args, **kwargs):
-        """Measures execution time of a function."""
         start = time.time()
         result = func(*args, **kwargs)
         duration = time.time() - start
-
         name = func.__qualname__
         if name not in self.stats:
             self.stats[name] = {"count": 0, "total_time": 0.0, "max_time": 0.0, "min_time": float('inf')}
-
-        stat = self.stats[name]
-        stat["count"] += 1
-        stat["total_time"] += duration
-        stat["max_time"] = max(stat["max_time"], duration)
-        stat["min_time"] = min(stat["min_time"], duration)
-
+        s = self.stats[name]
+        s["count"] += 1
+        s["total_time"] += duration
+        s["max_time"] = max(s["max_time"], duration)
+        s["min_time"] = min(s["min_time"], duration)
         return result
 
     def get_report(self):
-        """Generates a summary profiling report."""
         report = []
         for name, s in self.stats.items():
             avg = s["total_time"] / s["count"] if s["count"] > 0 else 0
@@ -422,94 +390,101 @@ class GenieuneHeadsProfiler:
         return "\n".join(report)
 
 def ascii_plot(data, width=60, height=20, label_x="X", label_y="Y"):
-    """Simple ASCII plotter for 2D trajectories."""
-    if not data:
-        return "No data to plot."
-
+    if not data: return "No data to plot."
     xs, ys = zip(*data)
     min_x, max_x = min(xs), max(xs)
     min_y, max_y = min(ys), max(ys)
-
-    range_x = float(max_x - min_x) or 1.0
-    range_y = float(max_y - min_y) or 1.0
-
-    # Grid initialization
+    rx, ry = float(max_x - min_x) or 1.0, float(max_y - min_y) or 1.0
     grid = [[" " for _ in range(width)] for _ in range(height)]
-
     for x, y in data:
-        # Scale to grid coords
-        px = int((float(x) - float(min_x)) / range_x * (width - 1))
-        py = int((float(y) - float(min_y)) / range_y * (height - 1))
-        # Invert py because grid row 0 is at the top
-        py = height - 1 - py
+        px = int((float(x) - float(min_x)) / rx * (width - 1))
+        py = height - 1 - int((float(y) - float(min_y)) / ry * (height - 1))
         grid[py][px] = "*"
-
     lines = ["+" + "-" * width + "+"]
-    for row in grid:
-        lines.append("|" + "".join(row) + "|")
+    for row in grid: lines.append("|" + "".join(row) + "|")
     lines.append("+" + "-" * width + "+")
     lines.append(f"{label_x}: [{float(min_x):.2f}, {float(max_x):.2f}]  {label_y}: [{float(min_y):.2f}, {float(max_y):.2f}]")
-
     return "\n".join(lines)
+
+class GeometricOrbitConstructor:
+    """
+    Implements the four-coordinate framework for geometric orbit construction.
+    Computes "genuine heads" directly from 12 parameters (r, v, j0, delta for 3 colors).
+    """
+    def __init__(self, m):
+        self.m = m
+
+    def spike_function(self, j, v, j0, delta):
+        diff = (int(j) - int(j0)) % self.m
+        indicator = (1 - pow(diff, self.m - 1, self.m)) % self.m
+        return Decimal(v) + Decimal(delta) * Decimal(indicator)
+
+    def compute_genuine_heads(self, params_list):
+        results = []
+        for i, p in enumerate(params_list):
+            orbit = [self.spike_function(j, p['v'], p['j0'], p['delta']) for j in range(self.m)]
+            sigma = sum(orbit)
+            head_start = (Decimal(p['r']) * sigma) % Decimal(self.m)
+            results.append({
+                "color": i,
+                "params": p,
+                "sigma": str(sigma),
+                "head_start": str(head_start),
+                "orbit": [str(x) for x in orbit]
+            })
+        return results
+
+class GeometricHeadTargeter(HeadTargeter):
+    def __init__(self, m=7, dim=256, base=10000, cache_file=None):
+        super().__init__(dim=dim, base=base, cache_file=cache_file)
+        self.m = m
+        self.constructor = GeometricOrbitConstructor(m)
+        self.orbit_params = []
+
+    def set_orbit_parameters(self, params_list):
+        self.orbit_params = self.constructor.compute_genuine_heads(params_list)
+
+    def get_genuine_head(self, color_idx):
+        if color_idx >= len(self.orbit_params):
+            return None
+        return self.orbit_params[color_idx]
 
 if __name__ == "__main__":
     import sys
-    dim = 256
-    targeter = HeadTargeter(dim=dim, cache_file="heads_map.json")
-    pressure_system = PressureWeightSystem(n_heads=16)
-    modulator = Modulator(targeter, pressure_system)
-    analyzer = HeadAnalyzer(targeter)
-
     if len(sys.argv) > 1:
         cmd = sys.argv[1]
-        if cmd == "target":
+        if cmd == "orbit":
+            m = int(sys.argv[2]) if len(sys.argv) > 2 else 7
+            constructor = GeometricOrbitConstructor(m)
+            params = []
+            if len(sys.argv) > 3:
+                params = json.loads(sys.argv[3])
+            else:
+                for i in range(3):
+                    params.append({"r": i+1, "v": 0.1*(i+1), "j0": i, "delta": 0.5})
+            results = constructor.compute_genuine_heads(params)
+            print(json.dumps(results, indent=4))
+        elif cmd == "target":
+            targeter = HeadTargeter(dim=256, cache_file="heads_map.json")
             idx = int(sys.argv[2]) if len(sys.argv) > 2 else 0
             pos = int(sys.argv[3]) if len(sys.argv) > 3 else 1
+            modulator = Modulator(targeter, PressureWeightSystem(n_heads=16))
             params = modulator.target_head(idx, pos)
             print(json.dumps({k:v for k,v in params.items() if not k.startswith("decimal_")}, indent=4))
         elif cmd == "pressure":
-            print(f"--- Pressure Weight Sequence ---")
-            for i, w in enumerate(pressure_system.weights):
-                print(f"Head {i:2d}: {w}")
-        elif cmd == "encode":
-            seq_len = int(sys.argv[2]) if len(sys.argv) > 2 else 10
-            matrix = modulator.encode_sequence(seq_len)
-            print(f"--- Sequence Embedding Matrix (SeqLen={seq_len}) ---")
-            for pos, row in enumerate(matrix):
-                print(f"Pos {pos:2d}: {row[0]}") # Show first head for brevity
-        elif cmd == "bias":
-            seq_len = int(sys.argv[2]) if len(sys.argv) > 2 else 5
-            bias = modulator.build_attention_bias(seq_len)
-            print(f"--- Attention Bias Matrix (Head 0, SeqLen={seq_len}) ---")
-            for row in bias[0]:
-                print([float(x) for x in row])
+            ps = PressureWeightSystem(n_heads=16)
+            for i, w in enumerate(ps.weights): print(f"Head {i:2d}: {w}")
         elif cmd == "analyze":
-            print(f"--- Head Analysis ---")
+            targeter = HeadTargeter(dim=256, cache_file="heads_map.json")
+            analyzer = HeadAnalyzer(targeter)
             bands = analyzer.analyze_frequency_bands()
             print(f"Frequency Bands: {[len(b) for b in bands['bands']]}")
-            entropy = analyzer.calculate_band_entropy()
-            print(f"Band Entropy: {entropy:.4f}")
-            harmonics = analyzer.identify_harmonic_heads()
-            print(f"Harmonic Head Pairs: {len(harmonics)}")
-        elif cmd == "export-map":
-            target_file = sys.argv[2] if len(sys.argv) > 2 else "heads_map_exported.json"
-            # Force compute a few positions if cache is empty or just export current
-            if targeter.external_cache:
-                targeter.external_cache.save(target_file)
-                print(f"Exported heads map to {target_file}")
-            else:
-                print("No external cache to export.")
+            print(f"Band Entropy: {analyzer.calculate_band_entropy():.4f}")
         elif cmd == "plot":
+            targeter = HeadTargeter(dim=256, cache_file="heads_map.json")
+            analyzer = HeadAnalyzer(targeter)
             idx = int(sys.argv[2]) if len(sys.argv) > 2 else 0
-            max_pos = int(sys.argv[3]) if len(sys.argv) > 3 else 50
-            trajectory = analyzer.generate_phase_portrait(idx, max_pos)
-            print(f"--- Phase Portrait (Head {idx}, Pos 0-{max_pos}) ---")
-            print(ascii_plot(trajectory, label_x="Sin", label_y="Cos"))
+            traj = analyzer.generate_phase_portrait(idx, 50)
+            print(ascii_plot(traj))
     else:
-        print(f"--- Genieune Modulator Initialized (Ultra High Precision) ---")
-        is_geo, _ = targeter.verify_geometric_integrity()
-        print(f"Frequency Geometric Integrity: {is_geo}")
-        test_vec = [Decimal('1.0')] * dim
-        rotated = apply_rope(test_vec, 5, targeter)
-        diff = abs(sum(x*x for x in test_vec) - sum(x*x for x in rotated))
-        print(f"Precision Check (Norm Diff): {diff}")
+        print("--- Genieune Modulator Initialized (Ultra High Precision) ---")

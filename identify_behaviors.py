@@ -1,7 +1,16 @@
 import json
 import time
 from decimal import Decimal
-from genieune_heads import HeadTargeter, PressureWeightSystem, Modulator, apply_rope
+from genieune_heads import (
+    HeadTargeter,
+    PressureWeightSystem,
+    Modulator,
+    apply_rope,
+    HeadsMapCache,
+    HeadAnalyzer,
+    StreamingEncoder,
+    GeometricHeadTargeter
+)
 
 def identify_system_aspects():
     print("--- Identifying Aspects, Abilities, and Behaviors of Genieune Heads ---\n")
@@ -11,12 +20,11 @@ def identify_system_aspects():
     targeter = HeadTargeter(dim=dim)
     freqs = targeter.frequencies
     print(f"Aspect 1: Geometric Frequency Scaling")
-    print(f"  - Dimension Range: [0, {dim//2-1}]")
     print(f"  - Start Frequency (Head 0): {freqs[0]}")
     print(f"  - End Frequency (Head {dim//2-1}): {float(freqs[-1]):.10f}")
-    print(f"  - Ability: Preserves a constant ratio of {freqs[1]/freqs[0]} between all heads.")
+    print(f"  - Ability: Constant ratio of {freqs[1]/freqs[0]} between heads.")
 
-    # 2. Ability: Precision Targeting at Scale
+    # 2. Ability: Extreme Positional Targeting
     pos_extreme = 1_000_000
     params = targeter.get_head_parameters(5, pos_extreme)
     print(f"\nAbility 1: Extreme Positional Targeting")
@@ -29,24 +37,34 @@ def identify_system_aspects():
     start = time.time()
     rotated = apply_rope(vec, 500, targeter)
     duration = time.time() - start
-
-    orig_norm = sum(x*x for x in vec).sqrt()
-    rot_norm = sum(x*x for x in rotated).sqrt()
-    diff = abs(orig_norm - rot_norm)
-
+    diff = abs(sum(x*x for x in vec).sqrt() - sum(x*x for x in rotated).sqrt())
     print(f"\nBehavior 1: Non-Destructive Precision Rotation")
     print(f"  - Norm Preservation Diff: {diff}")
-    print(f"  - Execution Time (Head=128): {duration:.4f}s")
-    print(f"  - Behavior: Guaranteed to maintain vector magnitude < 1e-90 error at large scales.")
+    print(f"  - Execution Time (Dim=256): {duration:.4f}s")
 
     # 4. Aspect: Programmable Pressure Weights
     p_system = PressureWeightSystem(n_heads=16, base_pressure=Decimal('16.0'))
-    weights = p_system.weights
     print(f"\nAspect 2: Programmable Pressure Weights")
-    print(f"  - Behavior: Geometric attenuation of attention influence.")
-    print(f"  - Max Weight (Head 0): {weights[0]}")
-    print(f"  - Min Weight (Head 15): {weights[-1]}")
-    print(f"  - Ratio (Head 1/0): {weights[1]/weights[0]}")
+    print(f"  - Max Weight (Head 0): {p_system.weights[0]}")
+    print(f"  - Min Weight (Head 15): {p_system.weights[-1]}")
+
+    # 5. Behavior: Geometric Orbit Construction
+    g_targeter = GeometricHeadTargeter(m=7)
+    params_list = [{"r": 1, "v": 0.1, "j0": 0, "delta": 0.5}, {"r": 2, "v": 0.2, "j0": 1, "delta": 0.5}, {"r": 3, "v": 0.3, "j0": 2, "delta": 0.5}]
+    g_targeter.set_orbit_parameters(params_list)
+    genuine_head = g_targeter.get_genuine_head(0)
+    print(f"\nBehavior 2: Geometric Orbit Construction")
+    print(f"  - Modulus (m): {g_targeter.m}")
+    print(f"  - Genuine Head 0 Start: {genuine_head['head_start']}")
+    print(f"  - Deterministic sigma: {genuine_head['sigma']}")
+
+    # 6. Ability: Advanced Diagnostics
+    analyzer = HeadAnalyzer(targeter)
+    entropy = analyzer.calculate_band_entropy()
+    drift = analyzer.calculate_phase_drift(0, seq_len=100)
+    print(f"\nAbility 2: Advanced Diagnostics")
+    print(f"  - Frequency Band Entropy: {entropy:.4f}")
+    print(f"  - 100-Pos Phase Drift: {drift}")
 
     print("\nSystem identification complete.")
 
