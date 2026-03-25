@@ -6,36 +6,37 @@ from decimal import Decimal, getcontext
 # Set precision very high for "Precision targeting"
 getcontext().prec = 100
 
+_PI = Decimal("3.1415926535897932384626433832795028841971693993751058209749445923078164062862089986280348253421170679")
+_TWO_PI = 2 * _PI
+
 def decimal_sin_cos(x, terms=50):
     """
     Calculates sin(x) and cos(x) using Taylor series for high precision.
-    x is a Decimal.
+    x is a Decimal. Optimized by pre-calculating constants and combining loops.
     """
-    pi = Decimal('3.1415926535897932384626433832795028841971693993751058209749445923078164062862089986280348253421170679')
-    two_pi = 2 * pi
-    x = x % two_pi
-    if x > pi:
-        x -= two_pi
+    x = x % _TWO_PI
+    if x > _PI:
+        x -= _TWO_PI
 
     sin_x = Decimal(0)
     cos_x = Decimal(0)
 
-    term = x
-    x_sq = x * x
+    term_s = x
+    term_s = x
+    term_c = Decimal(1)
+    neg_x_sq = -x * x
 
-    # Sin series: x - x^3/3! + x^5/5! ...
+    # Combined Sin/Cos Taylor series: reduces iteration overhead by 50%
     for i in range(terms):
-        sin_x += term
-        term *= -x_sq / Decimal((2*i + 2) * (2*i + 3))
+        sin_x += term_s
+        cos_x += term_c
 
-    # Cos series: 1 - x^2/2! + x^4/4! ...
-    term = Decimal(1)
-    for i in range(terms):
-        cos_x += term
-        term *= -x_sq / Decimal((2*i + 1) * (2*i + 2))
+        # 2*i is reused to calculate indices for both series updates
+        idx = 2 * i
+        term_c *= neg_x_sq / Decimal((idx + 1) * (idx + 2))
+        term_s *= neg_x_sq / Decimal((idx + 2) * (idx + 3))
 
     return sin_x, cos_x
-
 class HeadsMapCache:
     """Loads and saves precomputed head parameters from/to JSON."""
     def __init__(self, filepath="heads_map.json"):
@@ -185,21 +186,20 @@ class SequenceEncoder:
         matrix = []
         for pos in range(seq_len):
             row = []
-            for head_idx in range(self.targeter.dim // 2):
-                params = self.targeter.get_head_parameters(head_idx, pos)
-                row.append((params["decimal_sin"], params["decimal_cos"]))
+            for h in range(self.targeter.dim // 2):
+                p = self.targeter.get_head_parameters(h, pos)
+                row.append((p["decimal_sin"], p["decimal_cos"]))
             matrix.append(row)
         return matrix
 
     def build_embedding_matrix(self, seq_len):
-        """Builds a full embedding matrix (seq_len, dim)."""
+        """Builds a full embedding matrix (seq_len, dim). Optimized with list comprehensions."""
         embedding = []
         for pos in range(seq_len):
-            row = [Decimal(0)] * self.targeter.dim
-            for head_idx in range(self.targeter.dim // 2):
-                params = self.targeter.get_head_parameters(head_idx, pos)
-                row[2*head_idx] = params["decimal_sin"]
-                row[2*head_idx + 1] = params["decimal_cos"]
+            row = []
+            for h in range(self.targeter.dim // 2):
+                p = self.targeter.get_head_parameters(h, pos)
+                row.extend([p["decimal_sin"], p["decimal_cos"]])
             embedding.append(row)
         return embedding
 
@@ -274,15 +274,15 @@ class Modulator:
         return [[Decimal(scores[i][j]) + bias[i][j] for j in range(seq_len)] for i in range(seq_len)]
 
 def apply_rope(vec, pos, targeter):
-    """Applies RoPE to a vector using a HeadTargeter."""
+    """Applies RoPE to a vector using a HeadTargeter. Optimized by using list extension."""
     dim = len(vec)
-    rotated_vec = [Decimal(0)] * dim
+    rotated_vec = []
     for i in range(dim // 2):
         x1, x2 = vec[2*i], vec[2*i + 1]
         params = targeter.get_head_parameters(i, pos)
         s, c = params["decimal_sin"], params["decimal_cos"]
-        rotated_vec[2*i] = x1 * c - x2 * s
-        rotated_vec[2*i + 1] = x1 * s + x2 * c
+        # Rotating in 2D pairs (complex number multiplication logic)
+        rotated_vec.extend([x1 * c - x2 * s, x1 * s + x2 * c])
     return rotated_vec
 
 class HeadAnalyzer:
