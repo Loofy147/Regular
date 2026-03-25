@@ -8,5 +8,7 @@ from .core import (
     SequenceEncoder,
     AttentionBiasMatrix,
     GenieuneHeadsProfiler,
-    StreamingEncoder
+    StreamingEncoder,
+    GeometricOrbitConstructor,
+    GeometricHeadTargeter
 )
