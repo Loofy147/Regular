@@ -207,33 +207,32 @@ class AttentionBiasMatrix:
     """Generates ALiBi-style bias matrices using pressure weights."""
     def __init__(self, pressure_system):
         self.pressure_system = pressure_system
+        self._cache = {}  # Cache for generated bias matrices
 
     def build_full_bias_matrix(self, seq_len):
         """Builds a full [n_heads, seq_len, seq_len] bias matrix."""
         n_heads = self.pressure_system.n_heads
-        bias_matrix = []
-        for h in range(n_heads):
-            slope = self.pressure_system.get_weight(h)
-            head_matrix = []
-            for i in range(seq_len):
-                row = []
-                for j in range(seq_len):
-                    dist = Decimal(abs(i - j))
-                    row.append(-(slope * dist))
-                head_matrix.append(row)
-            bias_matrix.append(head_matrix)
-        return bias_matrix
+        # Leverage the optimized get_bias_for_head which handles caching
+        return [self.get_bias_for_head(h, seq_len) for h in range(n_heads)]
 
     def get_bias_for_head(self, head_idx, seq_len):
-        """Generates a bias matrix for a single head."""
-        slope = self.pressure_system.get_weight(head_idx % self.pressure_system.n_heads)
-        head_matrix = []
-        for i in range(seq_len):
-            row = []
-            for j in range(seq_len):
-                dist = Decimal(abs(i - j))
-                row.append(-(slope * dist))
-            head_matrix.append(row)
+        """Generates a bias matrix for a single head with caching and pre-calculation."""
+        n_heads = self.pressure_system.n_heads
+        actual_head_idx = head_idx % n_heads
+        cache_key = (actual_head_idx, seq_len)
+
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+
+        slope = self.pressure_system.get_weight(actual_head_idx)
+        # Pre-calculate distances to avoid redundant Decimal multiplications in the O(N^2) loop
+        # This optimization reduces Decimal multiplications from O(N^2) to O(N)
+        dist_map = [-(slope * Decimal(d)) for d in range(seq_len)]
+
+        # Construct the matrix using pre-calculated distance slopes and list comprehensions
+        head_matrix = [[dist_map[abs(i - j)] for j in range(seq_len)] for i in range(seq_len)]
+
+        self._cache[cache_key] = head_matrix
         return head_matrix
 
 class Modulator:
@@ -271,13 +270,8 @@ class Modulator:
         """Applies pressure-weighted bias to attention scores."""
         seq_len = len(scores)
         bias = self.bias_generator.get_bias_for_head(head_idx, seq_len)
-        modulated = []
-        for i in range(seq_len):
-            row = []
-            for j in range(seq_len):
-                row.append(Decimal(scores[i][j]) + bias[i][j])
-            modulated.append(row)
-        return modulated
+        # Efficient matrix addition using list comprehensions to reduce overhead of append calls
+        return [[Decimal(scores[i][j]) + bias[i][j] for j in range(seq_len)] for i in range(seq_len)]
 
 def apply_rope(vec, pos, targeter):
     """Applies RoPE to a vector using a HeadTargeter."""
